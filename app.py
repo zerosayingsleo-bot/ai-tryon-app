@@ -37,8 +37,8 @@ if uploaded_file:
         else:
             with st.spinner("Gemini 正在分析图片并编写提示词..."):
                 try:
-                    # 初始化 Gemini 1.5 Flash (多模态能力强且免费额度高)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    # 初始化 Gemini 3.1 Flash (多模态能力强且免费额度高)
+                    model = genai.GenerativeModel('gemini-3.1-flash')
 
                     # 构造 Prompt 给 Gemini
                     system_prompt = f"""
