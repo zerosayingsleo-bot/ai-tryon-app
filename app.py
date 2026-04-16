@@ -43,32 +43,10 @@ if uploaded_file:
         else:
             with st.status("正在启动 AI 工作流...", expanded=True) as status:
                 try:
-                    # --- 1. 获取并智能筛选模型 (强制优先使用 1.5-flash) ---
-                    status.write("正在检测 API 权限并匹配高额度模型...")
-                    available_models = [
-                        m.name for m in genai.list_models() 
-                        if 'generateContent' in m.supported_generation_methods
-                    ]
-                    
-                    # 优先级调整：强制 1.5-flash 排在最前面，因为它更稳、配额更多
-                    preferred_order = [
-                        "models/gemini-1.5-flash", 
-                        "models/gemini-1.5-flash-latest",
-                        "models/gemini-2.0-flash", 
-                        "models/gemini-pro-vision"
-                    ]
-                    
-                    target_model = ""
-                    for p in preferred_order:
-                        if p in available_models:
-                            target_model = p
-                            break
-                    
-                    if not target_model:
-                        target_model = available_models[0]
-                    
-                    status.write(f"已选择稳定性最佳模型: `{target_model}`")
-                    model = genai.GenerativeModel(target_model)
+                    # --- 1. 暴力指定模型 (绝不让它用 2.0) ---
+                    status.write("正在强制唤醒 gemini-1.5-flash 模型...")
+                    # 直接写死，跳过权限检测
+                    model = genai.GenerativeModel('gemini-1.5-flash')
 
                     # --- 2. 构造 Prompt ---
                     prompt_content = [
@@ -76,6 +54,35 @@ if uploaded_file:
                         image
                     ]
 
+                    # --- 3. 执行请求 ---
+                    status.write("正在发送分析请求...")
+                    # 仅保留一次基础延迟防止并发
+                    time.sleep(1.5) 
+                    
+                    response = model.generate_content(prompt_content)
+
+                    # --- 4. 结果展示 ---
+                    if response and response.text:
+                        status.update(label="✨ 生成成功！", state="complete", expanded=True)
+                        st.success("分析与指令生成完毕：")
+                        
+                        full_text = response.text
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.subheader("📝 细节分析")
+                            st.write(full_text.split("2.")[0].replace("1.", ""))
+                        with col2:
+                            st.subheader("🎨 绘图指令 (Prompt)")
+                            prompt_text = full_text.split("2.")[-1] if "2." in full_text else full_text
+                            st.code(prompt_text.strip(), language="markdown")
+                    else:
+                        status.update(label="❌ 无法生成内容", state="error")
+                        st.error("模型未能返回结果，请检查图片是否清晰。")
+
+                except Exception as e:
+                    err_msg = str(e)
+                    status.update(label="❌ 发生错误", state="error")
+                    st.error(f"底层拒绝详情: {err_msg}")
                     # --- 3. 带重试机制的请求执行 (对抗 429) ---
                     status.write("正在分析并生成内容（如遇拥堵将自动重试）...")
                     
