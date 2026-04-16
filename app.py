@@ -14,25 +14,20 @@ with st.sidebar:
     
     st.markdown("""
     **🔧 当前底层配置：**
-    - **API 版本**: `v1` (稳定版)
     - **传输协议**: `REST` (防断连)
-    - **视觉模型**: `1.5-Flash-8B` (高频免费)
+    - **视觉模型**: `1.5-Flash-002` (稳定生产版)
     """)
     
     if api_key:
         try:
-            # 【最核心防御】强制切断 v1beta 路由，使用纯净的 REST 协议和 v1 稳定版接口
-            genai.configure(
-                api_key=api_key, 
-                transport='rest',
-                client_options={'api_version': 'v1'}
-            )
+            # 【修复点 1】移除了错误的 api_version 参数，仅保留 REST 协议确保 Streamlit 云端稳定
+            genai.configure(api_key=api_key, transport='rest')
             st.success("✅ API 底层环境已就绪")
         except Exception as e:
             st.error(f"❌ 配置异常: {e}")
 
 st.title("👕 AI 数字人模特试穿系统")
-st.markdown("上传衣服照片，利用极速版 Gemini 识别特征并一键生成 AI 数字人穿搭指令。")
+st.markdown("上传衣服照片，利用稳定版 Gemini 识别特征并一键生成 AI 数字人穿搭指令。")
 
 # --- 3. 核心功能区 ---
 uploaded_file = st.file_uploader("第一步：上传衣服照片", type=["jpg", "jpeg", "png"])
@@ -55,10 +50,9 @@ if uploaded_file:
         else:
             with st.status("正在启动极速 AI 工作流...", expanded=True) as status:
                 try:
-                    # --- 1. 强制绑定高频模型 ---
-                    # 彻底放弃智能探测，强制使用专为高频免费打造的 8b 轻量级模型
-                    target_model = 'gemini-1.5-flash-8b'
-                    status.write(f"已锁定免封锁模型: `{target_model}`")
+                    # 【修复点 2】强制绑定目前最稳定、免费额度最正常的生产级主模型
+                    target_model = 'gemini-1.5-flash-002'
+                    status.write(f"已锁定稳定生产模型: `{target_model}`")
                     model = genai.GenerativeModel(target_model)
 
                     # --- 2. 构造分析 Prompt ---
@@ -74,7 +68,7 @@ if uploaded_file:
                     max_retries = 3
                     for attempt in range(max_retries):
                         try:
-                            # 基础防御：请求前微小随机延迟，防止并发被墙
+                            # 基础防御：请求前微小随机延迟，防止并发
                             time.sleep(1 + random.random()) 
                             response = model.generate_content(prompt_content)
                             if response:
@@ -82,7 +76,7 @@ if uploaded_file:
                                 
                         except Exception as inner_e:
                             if "429" in str(inner_e) and attempt < max_retries - 1:
-                                wait_sec = (attempt + 1) * 8 # 遇到 429 阶梯等待: 8秒 -> 16秒
+                                wait_sec = (attempt + 1) * 8 # 遇到 429 阶梯等待
                                 status.write(f"⚠️ 服务器拥堵 (429)，正在自动规避，{wait_sec} 秒后重试...")
                                 time.sleep(wait_sec)
                             else:
@@ -96,7 +90,7 @@ if uploaded_file:
                         full_text = response.text
                         col1, col2 = st.columns(2)
                         
-                        # 简单的文本切割逻辑，分离“描述”与“英文提示词”
+                        # 简单的文本切割逻辑
                         with col1:
                             st.subheader("📝 细节分析")
                             analysis_text = full_text.split("2.")[0].replace("1.", "")
@@ -109,17 +103,13 @@ if uploaded_file:
                             
                     else:
                         status.update(label="❌ 无法生成内容", state="error")
-                        st.error("模型未能返回有效结果，请确认图片格式正确或图片未违规。")
+                        st.error("模型未能返回有效结果，请确认图片格式正确。")
 
                 except Exception as e:
                     err_msg = str(e)
                     status.update(label="❌ 发生底层错误", state="error")
                     st.error(f"详细拒绝原因: {err_msg}")
-                    
-                    # 针对可能残留的 404 给出最后的退路提示
-                    if "404" in err_msg:
-                        st.info("💡 如果依然报 404，请将代码第 48 行的模型 ID 改为 `'gemini-1.5-flash-002'` 尝试。")
 
 # --- 4. 底部声明 ---
 st.markdown("---")
-st.caption("⚡ 终极稳定版工作流 | 强制定向 v1 接口 | Powered by Gemini 1.5 Flash 8B")
+st.caption("⚡ 终极净化版工作流 | Powered by Gemini 1.5 Flash 002")
