@@ -1,79 +1,100 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import io
+import time
 
-# --- 页面配置 ---
-st.set_page_config(page_title="AI 虚拟试穿工作流", layout="centered")
+# --- 1. 基础页面设置 ---
+st.set_page_config(page_title="AI 虚拟试穿系统", layout="centered", page_icon="👕")
 
-# --- 侧边栏：配置 API Key ---
+# --- 2. 侧边栏 API 配置 ---
 with st.sidebar:
-    st.title("设置")
-    api_key = st.text_input("请输入 Gemini API Key", type="password")
+    st.title("⚙️ 配置中心")
+    api_key = st.text_input("输入 Gemini API Key", type="password")
+    st.info("💡 建议：如果 429 报错，请等待 1 分钟后重试。")
     if api_key:
         genai.configure(api_key=api_key)
-    st.info("该工作流使用 Gemini 1.5 Flash 进行图像分析与 Prompt 生成。")
 
 st.title("👕 AI 数字人模特试穿系统")
-st.markdown("上传衣服照片，Gemini 将自动为您设计数字人形象并生成穿搭提示词。")
+st.markdown("上传衣服照片，利用 Gemini 识别特征并生成 AI 数字人穿搭指令。")
 
-# --- 第一步：上传图片 ---
-uploaded_file = st.file_uploader("选择衣服图片...", type=["jpg", "jpeg", "png"])
+# --- 3. 核心功能逻辑 ---
+uploaded_file = st.file_uploader("第一步：上传衣服照片", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # 显示上传的图片
+    # 转换图片
     image = Image.open(uploaded_file)
-    st.image(image, caption="已上传的衣服", use_column_width=True)
+    st.image(image, caption="已上传的原始衣服", use_container_width=True)
 
-    # --- 第二步：输入自定义要求 ---
     user_requirement = st.text_area(
-        "数字人及场景要求",
-        placeholder="例如：一名在北欧森林里的金发女性模特，阳光明媚，电影感画面..."
+        "第二步：描述模特和场景",
+        placeholder="例如：一名 25 岁的亚洲女性模特，站在极简主义工作室中，柔和光影..."
     )
 
-    if st.button("🚀 开始生成工作流"):
+    # 按钮点击逻辑
+    if st.button("🚀 生成数字人穿搭工作流"):
         if not api_key:
-            st.error("请先在侧边栏输入 API Key！")
+            st.warning("⚠️ 请先在侧边栏配置 API Key")
         else:
-            with st.spinner("Gemini 正在分析图片并编写提示词..."):
+            # 建立状态提示，防止重复点击
+            with st.status("正在识别衣服并分析提示词...", expanded=True) as status:
                 try:
-                    # 初始化 Gemini 2.0 Flash (多模态能力强且免费额度高)
-                    model = genai.GenerativeModel('gemini-2.0-flash')
+                    # 获取当前账户下可用的 Flash 模型 ID
+                    # 优先选择 2.0，如果失败则回退到 1.5
+                    try:
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                    except:
+                        model = genai.GenerativeModel('gemini-pro-vision')
 
-                    # 构造 Prompt 给 Gemini
-                    system_prompt = f"""
-                    你是一名顶尖的 AI 绘图提示词专家和时尚造型师。
-                    任务：分析这张图片中的衣服（款式、颜色、材质、纹理），并结合用户的要求："{user_requirement}"。
-                    输出：
-                    1. 衣服的详细特征描述（中文）。
-                    2. 一段用于 Stable Diffusion 或 Midjourney 的英文高清绘图提示词（Prompt）。
-                    要求提示词包含：数字人的五官、肤色、姿势、光影效果、环境细节，以及确保衣服与人体结合自然。
+                    # 构造 2026 标准 Prompt
+                    prompt_text = f"""
+                    你是一名顶尖的 AI 虚拟模特摄影师。
+                    请根据图片中的衣服（款式、面料、颜色）以及用户要求："{user_requirement}"。
+                    执行以下任务：
+                    1. 详细描述衣服在数字人身上的穿着细节。
+                    2. 提供一段高质量的英文 AI 绘图提示词 (Prompt)，用于生成该衣服的虚拟试穿大片。
+                    提示词要求：包含模特外貌、相机参数、环境光影、衣服褶皱感。
                     """
 
-                    # 发送图片和文字给 Gemini
-                    response = model.generate_content([system_prompt, image])
-
-                    # --- 第三步：展示结果 ---
-                    st.success("分析完成！")
-
+                    # 发起请求
+                    # 免费层级建议增加一个微小的延迟防止并发
+                    time.sleep(0.5) 
+                    response = model.generate_content([prompt_text, image])
+                    
+                    # 成功后更新状态
+                    status.update(label="✨ 生成成功！", state="complete", expanded=True)
+                    
+                    # 展示结果
+                    st.success("分析与指令生成完毕：")
+                    
+                    res_text = response.text
+                    
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheader("分析报告")
-                        st.write(response.text)
-
+                        st.subheader("📝 衣服细节分析")
+                        # 截取前半段描述
+                        st.write(res_text.split("2.")[0] if "2." in res_text else res_text)
+                        
                     with col2:
-                        st.subheader("AI 绘图指令")
-                        # 将生成的 Prompt 放入代码框，方便用户复制
-                        st.code(response.text.split("Prompt")[-1].strip(), language="markdown")
+                        st.subheader("🎨 绘图指令 (Prompt)")
+                        # 将英文 Prompt 单独提取到代码框中
+                        prompt_part = res_text.split("2.")[-1] if "2." in res_text else res_text
+                        st.code(prompt_part.strip(), language="markdown")
 
-                    # --- 第四步：模拟/调用生成环节 ---
                     st.divider()
-                    st.info(
-                        "提示：您可以将上述 Prompt 复制到 Stable Diffusion 或 Midjourney 中。目前 Gemini API 正在逐步开放 Imagen 3 原生绘图接口。")
+                    st.info("💡 提示：将右侧指令复制到 Stable Diffusion 或 Midjourney 即可出图。")
 
                 except Exception as e:
-                    st.error(f"发生错误: {str(e)}")
+                    error_msg = str(e)
+                    if "429" in error_msg:
+                        status.update(label="❌ 触发频率限制", state="error")
+                        st.error("操作太快了！Gemini 免费版每分钟限制调用次数。请等待 60 秒后再试。")
+                    elif "404" in error_msg:
+                        status.update(label="❌ 模型未找到", state="error")
+                        st.error("当前 API Key 无法访问指定的模型版本，请检查 Google AI Studio 权限。")
+                    else:
+                        status.update(label="❌ 发生未知错误", state="error")
+                        st.error(f"具体错误：{error_msg}")
 
-# --- 底部页脚 ---
+# --- 4. 底部声明 ---
 st.markdown("---")
-st.caption("基于 Google Gemini API | 免费部署于 Streamlit Cloud")
+st.caption("⚡ 2026 Gemini Workflow | Powered by Google Generative AI")
