@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 import time
 import random
@@ -14,20 +14,12 @@ with st.sidebar:
     
     st.markdown("""
     **🔧 当前底层配置：**
-    - **传输协议**: `REST` (防断连)
-    - **视觉模型**: `1.5-Flash-002` (稳定生产版)
+    - **核心 SDK**: `google-genai` (2026 最新官方库)
+    - **视觉模型**: `Gemini 2.5 Flash` (原生支持)
     """)
-    
-    if api_key:
-        try:
-            # 【修复点 1】移除了错误的 api_version 参数，仅保留 REST 协议确保 Streamlit 云端稳定
-            genai.configure(api_key=api_key, transport='rest')
-            st.success("✅ API 底层环境已就绪")
-        except Exception as e:
-            st.error(f"❌ 配置异常: {e}")
 
 st.title("👕 AI 数字人模特试穿系统")
-st.markdown("上传衣服照片，利用稳定版 Gemini 识别特征并一键生成 AI 数字人穿搭指令。")
+st.markdown("上传衣服照片，利用全新一代 Gemini 识别特征并一键生成 AI 数字人穿搭指令。")
 
 # --- 3. 核心功能区 ---
 uploaded_file = st.file_uploader("第一步：上传衣服照片", type=["jpg", "jpeg", "png"])
@@ -48,39 +40,40 @@ if uploaded_file:
         if not api_key:
             st.warning("⚠️ 请先在左侧边栏配置您的 API Key")
         else:
-            with st.status("正在启动极速 AI 工作流...", expanded=True) as status:
+            with st.status("正在启动全新 2.5 代 AI 工作流...", expanded=True) as status:
                 try:
-                    # 【修复点 2】强制绑定目前最稳定、免费额度最正常的生产级主模型
-                    target_model = 'gemini-1.5-flash-002'
-                    status.write(f"已锁定稳定生产模型: `{target_model}`")
-                    model = genai.GenerativeModel(target_model)
+                    # 【核心更新 1】使用全新的 Client 初始化方式
+                    client = genai.Client(api_key=api_key)
+                    
+                    # 锁定刚刚在你的探测列表中确认存在的模型
+                    target_model = 'gemini-2.5-flash'
+                    status.write(f"已锁定最新生产模型: `{target_model}`")
 
-                    # --- 2. 构造分析 Prompt ---
-                    prompt_content = [
-                        f"你是一名时尚摄影专家。分析图中衣服款式、材质，并结合要求：'{user_requirement}'。输出格式：\n1. 衣服细节描述：\n2. 英文AI绘图Prompt：",
-                        image
-                    ]
+                    # 构造分析 Prompt
+                    prompt_text = f"你是一名时尚摄影专家。分析图中衣服款式、材质，并结合要求：'{user_requirement}'。输出格式：\n1. 衣服细节描述：\n2. 英文AI绘图Prompt："
 
-                    # --- 3. 稳健的请求机制 (带重试逻辑) ---
                     status.write("正在发送多模态分析请求...")
                     
+                    # 【核心更新 2】使用全新的 API 调用语法
                     response = None
                     max_retries = 3
                     for attempt in range(max_retries):
                         try:
-                            # 基础防御：请求前微小随机延迟，防止并发
                             time.sleep(1 + random.random()) 
-                            response = model.generate_content(prompt_content)
-                            if response:
-                                break # 成功则跳出循环
+                            response = client.models.generate_content(
+                                model=target_model,
+                                contents=[prompt_text, image]
+                            )
+                            if response and response.text:
+                                break
                                 
                         except Exception as inner_e:
                             if "429" in str(inner_e) and attempt < max_retries - 1:
-                                wait_sec = (attempt + 1) * 8 # 遇到 429 阶梯等待
-                                status.write(f"⚠️ 服务器拥堵 (429)，正在自动规避，{wait_sec} 秒后重试...")
+                                wait_sec = (attempt + 1) * 5
+                                status.write(f"⚠️ 服务器排队中，正在等待 {wait_sec} 秒后重试...")
                                 time.sleep(wait_sec)
                             else:
-                                raise inner_e # 抛出非 429 错误或最后一次失败的错误
+                                raise inner_e
 
                     # --- 4. 结果解析与展示 ---
                     if response and response.text:
@@ -90,7 +83,6 @@ if uploaded_file:
                         full_text = response.text
                         col1, col2 = st.columns(2)
                         
-                        # 简单的文本切割逻辑
                         with col1:
                             st.subheader("📝 细节分析")
                             analysis_text = full_text.split("2.")[0].replace("1.", "")
@@ -103,13 +95,12 @@ if uploaded_file:
                             
                     else:
                         status.update(label="❌ 无法生成内容", state="error")
-                        st.error("模型未能返回有效结果，请确认图片格式正确。")
+                        st.error("模型未能返回有效结果。")
 
                 except Exception as e:
-                    err_msg = str(e)
                     status.update(label="❌ 发生底层错误", state="error")
-                    st.error(f"详细拒绝原因: {err_msg}")
+                    st.error(f"详细错误: {str(e)}")
 
 # --- 4. 底部声明 ---
 st.markdown("---")
-st.caption("⚡ 终极净化版工作流 | Powered by Gemini 1.5 Flash 002")
+st.caption("⚡ 2026 全新重构版工作流 | Powered by Gemini 2.5 Flash")
